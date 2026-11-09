@@ -1,0 +1,48 @@
+# Node & Frontend
+node_modules/
+desktop/node_modules/
+dist/
+desktop/dist/
+dist-electron/
+desktop/dist-electron/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.pyo
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Calibration & Test Artifacts
+calibration_data.json
+temp_test_calibration.json
+ai_engine/calibration_data.json
+ai_engine/temp_test_calibration.json
+
+# Large AI Model Weights (Preserve directories and task asset)
+models/whisper_model/*
+!models/whisper_model/.gitkeep
+models/language_model/*
+!models/language_model/.gitkeep
+!models/face_landmarker.task
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

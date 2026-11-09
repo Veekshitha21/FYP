@@ -1,0 +1,33 @@
+{
+  "name": "motionease-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MotionEase: Ultra-Low Latency Multi-Modal Hands-Free Computer Control System",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:start": "electron electron/main.cjs",
+    "app:dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron electron/main.cjs\""
+  },
+  "dependencies": {
+    "framer-motion": "^14.9.0",
+    "lucide-react": "^1.68.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.6.2",
+    "concurrently": "^10.0.6",
+    "electron": "^45.2.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.3.5",
+    "wait-on": "^9.5.1"
+  }
+}
