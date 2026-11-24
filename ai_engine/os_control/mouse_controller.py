@@ -166,10 +166,26 @@ class MouseController:
         """
         Scrolls the viewport.
         Positive amount = scroll up, Negative amount = scroll down.
+        Amount represents wheel steps. On Windows, 1 wheel step = 120 units (WHEEL_DELTA).
         """
         if self.is_human_yielding():
             return
+
+        # On Windows, native mouse_event with WHEEL_DELTA (120) provides smooth, instantaneous scrolling
+        # in all applications (Chrome, Edge, PDF readers, Explorer, etc.)
+        if _user32:
+            try:
+                # 1 wheel click in Windows = 120 units (WHEEL_DELTA)
+                wheel_units = int(amount * 120) if abs(amount) < 20 else int(amount)
+                # MOUSEEVENTF_WHEEL = 0x0800
+                _user32.mouse_event(0x0800, 0, 0, wheel_units, 0)
+                logger.debug(f"Executed Windows Wheel Scroll: {wheel_units} units ({amount} clicks)")
+                return
+            except Exception as e:
+                logger.debug(f"Native Windows scroll error: {e}")
+
         try:
-            pyautogui.scroll(amount)
+            clicks = int(amount * 120) if abs(amount) < 20 else int(amount)
+            pyautogui.scroll(clicks)
         except Exception as e:
             logger.debug(f"Scroll error: {e}")

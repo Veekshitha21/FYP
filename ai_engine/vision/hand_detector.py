@@ -56,11 +56,13 @@ class HandDetector:
         # Smoothing state
         self._prev_x: Optional[float] = None
         self._prev_y: Optional[float] = None
+        self._prev_scroll_y: Optional[float] = None
 
         # Gesture state
         self.pinch_frames = 0
         self.last_pinch_time = 0.0
         self.pinch_cooldown_sec = 0.4
+        self.last_scroll_time = 0.0
 
         self._init_detector()
 
@@ -173,8 +175,32 @@ class HandDetector:
         # Detect Pinch Gesture: Euclidean distance between index tip and thumb tip
         pinch_dist = math.hypot(idx_tip.x - thumb_tip.x, idx_tip.y - thumb_tip.y)
         detected_gesture = None
+        scroll_action = None
 
         now_sec = timestamp_ms / 1000.0 if timestamp_ms > 0 else 0.0
+
+        # Two-Finger Scrolling Gesture Detection
+        # Index & Middle fingers extended, Ring & Pinky curled
+        index_ext = idx_tip.y < hand_lms[INDEX_FINGER_PIP].y
+        middle_ext = hand_lms[MIDDLE_FINGER_TIP].y < hand_lms[MIDDLE_FINGER_PIP].y
+        ring_curled = hand_lms[RING_FINGER_TIP].y > hand_lms[RING_FINGER_PIP].y
+        pinky_curled = hand_lms[PINKY_TIP].y > hand_lms[PINKY_PIP].y
+
+        if index_ext and middle_ext and ring_curled and pinky_curled:
+            avg_y = (idx_tip.y + hand_lms[MIDDLE_FINGER_TIP].y) / 2.0
+            if self._prev_scroll_y is not None:
+                dy = avg_y - self._prev_scroll_y
+                if (now_sec - self.last_scroll_time) > 0.12:
+                    if dy < -0.012:
+                        scroll_action = "SCROLL_UP"
+                        self.last_scroll_time = now_sec
+                    elif dy > 0.012:
+                        scroll_action = "SCROLL_DOWN"
+                        self.last_scroll_time = now_sec
+            self._prev_scroll_y = avg_y
+        else:
+            self._prev_scroll_y = None
+
         # Pinch threshold: tips touching or very close (~0.065 in normalized space)
         if pinch_dist < 0.065:
             self.pinch_frames += 1
@@ -186,14 +212,12 @@ class HandDetector:
         else:
             self.pinch_frames = 0
 
-        # Optional Fist detection (all fingertips close to wrist)
-        # Can be used for right click or secondary action if needed
-
         return {
             "hand_detected": True,
             "cursor_x": round(max(0.0, min(1.0, smooth_x)), 4),
             "cursor_y": round(max(0.0, min(1.0, smooth_y)), 4),
             "gesture": detected_gesture,
+            "scroll_action": scroll_action,
             "pinch_dist": round(pinch_dist, 3),
             "confidence": 0.95,
             "landmarks": landmarks_list

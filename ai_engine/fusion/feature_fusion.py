@@ -74,19 +74,13 @@ class MultimodalFeatureFusion:
         Processes synchronized vision features from the current video frame.
         Supports Hand Tracking, Head Pose, Eye Gaze, and Facial Gestures.
         """
-        # 0. Hand Gesture Control (Active when hand is visible)
-        if self.hand_enabled and hand_data and hand_data.get("hand_detected"):
-            hx = hand_data.get("cursor_x", 0.5)
-            hy = hand_data.get("cursor_y", 0.5)
-            h_conf = hand_data.get("confidence", 0.95)
-            self.current_state["hand"] = hand_data
-            self.router.route_gaze_movement(hx, hy, h_conf)
-
-            if hand_data.get("gesture") == "PINCH_CLICK":
-                self.router.route_gesture_action("PINCH_CLICK", 0.95)
-            return
-
         is_scrolling = False
+
+        # 0. Two-Finger Hand Scrolling (if active)
+        if self.hand_enabled and hand_data and hand_data.get("scroll_action"):
+            is_scrolling = True
+            amount = 2 if hand_data["scroll_action"] == "SCROLL_UP" else -2
+            self.dispatcher.dispatch("SCROLL", amount)
 
         # 1. Head Pose & Scrolling
         if self.head_enabled and head_data and head_data.get("valid"):
@@ -112,18 +106,27 @@ class MultimodalFeatureFusion:
                 self._previous_pitch = head_data.get("pitch", 0.0)
                 self._previous_pitch_time = time.perf_counter()
 
-        # 2. Gaze Pointer Control
-        if self.gaze_enabled and gaze_data:
+        # 2. Pointer Movement (Hand has priority over Gaze/Head if hand detected)
+        if self.hand_enabled and hand_data and hand_data.get("hand_detected"):
+            hx = hand_data.get("cursor_x", 0.5)
+            hy = hand_data.get("cursor_y", 0.5)
+            h_conf = hand_data.get("confidence", 0.95)
+            self.current_state["hand"] = hand_data
+
+            if not is_scrolling:
+                self.router.route_gaze_movement(hx, hy, h_conf)
+
+            if hand_data.get("gesture") == "PINCH_CLICK":
+                self.router.route_gesture_action("PINCH_CLICK", 0.95)
+
+        elif self.gaze_enabled and gaze_data:
             gx = gaze_data.get("screen_x", 0.5)
             gy = gaze_data.get("screen_y", 0.5)
             g_conf = gaze_data.get("confidence", 0.8)
             self.current_state["gaze"] = {"x": gx, "y": gy, "confidence": g_conf}
 
-            # Only move cursor if user is not in the middle of a drastic head scroll
+            # Only move cursor if user is not in the middle of head/hand scrolling
             if not is_scrolling:
-                # Motion-intent gate: skip the cursor update if the filtered gaze
-                # point has barely moved (noise from breathing / micro-sway).
-                # We compare in pixel space using a 1920-wide reference screen.
                 should_dispatch = True
                 if self._last_dispatched_gaze_x is not None:
                     dx_px = abs(gx - self._last_dispatched_gaze_x) * 1920.0
