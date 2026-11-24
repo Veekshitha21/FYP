@@ -29,6 +29,10 @@ class GazeTracker:
         self.invert_y = config.INVERT_CURSOR_Y
         self.sensitivity = config.CURSOR_SENSITIVITY
 
+        # Neutral center reference baseline
+        self.neutral_face_x: float = 0.5
+        self.neutral_face_y: float = 0.5
+
         # Landmark pre-smoothing state (eliminates landmark-level vibration)
         self._smooth_face_x: Optional[float] = None
         self._smooth_face_y: Optional[float] = None
@@ -46,6 +50,19 @@ class GazeTracker:
 
         # Load existing calibration if present
         self.load_calibration()
+
+    def calibrate_center(self, face_x: Optional[float] = None, face_y: Optional[float] = None):
+        """Sets the current face position as the neutral center reference."""
+        if face_x is not None and face_y is not None:
+            self.neutral_face_x = face_x
+            self.neutral_face_y = face_y
+        elif self._smooth_face_x is not None and self._smooth_face_y is not None:
+            self.neutral_face_x = self._smooth_face_x
+            self.neutral_face_y = self._smooth_face_y
+        else:
+            self.neutral_face_x = 0.5
+            self.neutral_face_y = 0.5
+        logger.info(f"GazeTracker center calibrated to: ({self.neutral_face_x:.3f}, {self.neutral_face_y:.3f})")
 
     def update_settings(
         self,
@@ -132,15 +149,21 @@ class GazeTracker:
             raw_face_x = 0.5
             raw_face_y = 0.5
 
-        # Pre-smooth face anchor with heavy exponential moving average.
-        # Alpha=0.08 gives tau≈12 frames at 30fps (~0.4s), suppressing breathing-rate sway
-        # (breathing ~0.3 Hz moves nose ±0.5-2px which is now blended out slowly).
+        # Fixation Snap Lock: freezes face coordinates when stationary
+        # Eliminates indefinite creeping, drifting, or crawling when no action is done!
         if self._smooth_face_x is None:
             self._smooth_face_x = raw_face_x
             self._smooth_face_y = raw_face_y
         else:
-            self._smooth_face_x = 0.08 * raw_face_x + 0.92 * self._smooth_face_x
-            self._smooth_face_y = 0.08 * raw_face_y + 0.92 * self._smooth_face_y
+            delta_x = abs(raw_face_x - self._smooth_face_x)
+            delta_y = abs(raw_face_y - self._smooth_face_y)
+            # When displacement is below jitter/sway threshold (~2px), FREEZE completely
+            if delta_x < 0.0035 and delta_y < 0.0035:
+                pass
+            else:
+                # Responsive EMA: 0.38 adapts within 2-3 frames (~80ms) without lingering lag
+                self._smooth_face_x = 0.38 * raw_face_x + 0.62 * self._smooth_face_x
+                self._smooth_face_y = 0.38 * raw_face_y + 0.62 * self._smooth_face_y
 
         face_x = self._smooth_face_x
         face_y = self._smooth_face_y
@@ -164,20 +187,17 @@ class GazeTracker:
                 mode = "fallback_linear"
         else:
             # Active heuristic: combines head orientation (macro) and iris gaze (micro)
-            # Center baseline is 0.5
-            dx = face_x - 0.5
-            dy = face_y - 0.5
+            # Center baseline is self.neutral_face_x / self.neutral_face_y
+            dx = face_x - self.neutral_face_x
+            dy = face_y - self.neutral_face_y
 
             def _smooth_gain(delta: float) -> float:
                 sign = 1.0 if delta >= 0 else -1.0
                 mag = abs(delta)
-                # Suppress micro-sway in the breathing range (~0.015 norm units ≈ 10–15px)
-                # Natural head sway from breathing falls below this threshold;
-                # intentional head turns produce deltas well above it.
-                if mag < 0.015:
+                if mag < 0.005:
                     return 0.0
-                effective = mag - 0.015  # subtract dead-zone before amplifying
-                curved = (effective * 1.25) + (effective ** 1.6) * 1.0
+                effective = mag - 0.005
+                curved = (effective * 1.5) + (effective ** 1.4) * 1.0
                 return sign * curved
 
             macro_x = 0.5 + _smooth_gain(dx)

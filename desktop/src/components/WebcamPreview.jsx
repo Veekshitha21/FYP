@@ -95,6 +95,7 @@ export const WebcamPreview = ({
           gaze={telemetry?.gaze}
           head={telemetry?.head}
           dwell={telemetry?.dwell}
+          hand={telemetry?.hand}
           width={640}
           height={480}
         />

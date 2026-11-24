@@ -24,13 +24,15 @@ class MultimodalFeatureFusion:
         self.head_enabled = True
         self.gesture_enabled = True
         self.voice_enabled = True
+        self.hand_enabled = True
 
         # Last observed multimodal state
         self.current_state = {
             "gaze": {"x": 0.5, "y": 0.5, "confidence": 0.0},
             "head": {"pitch": 0.0, "yaw": 0.0, "roll": 0.0, "direction": "neutral"},
             "gesture": {"last_gesture": None, "confidence": 0.0},
-            "voice": {"last_command": None, "intent": None}
+            "voice": {"last_command": None, "intent": None},
+            "hand": {"hand_detected": False, "cursor_x": 0.5, "cursor_y": 0.5}
         }
         self._previous_pitch = None
         self._previous_pitch_time = None
@@ -56,6 +58,8 @@ class MultimodalFeatureFusion:
             self.gesture_enabled = enabled
         elif modality == "voice":
             self.voice_enabled = enabled
+        elif modality == "hand":
+            self.hand_enabled = enabled
         logger.info(f"Modality '{modality}' enabled status: {enabled}")
 
     def process_vision_frame(
@@ -63,11 +67,25 @@ class MultimodalFeatureFusion:
         gaze_data: Optional[Dict[str, Any]],
         head_data: Optional[Dict[str, Any]],
         gesture_data: Optional[Dict[str, Any]],
-        dwell_data: Optional[Dict[str, Any]]
+        dwell_data: Optional[Dict[str, Any]],
+        hand_data: Optional[Dict[str, Any]] = None
     ):
         """
         Processes synchronized vision features from the current video frame.
+        Supports Hand Tracking, Head Pose, Eye Gaze, and Facial Gestures.
         """
+        # 0. Hand Gesture Control (Active when hand is visible)
+        if self.hand_enabled and hand_data and hand_data.get("hand_detected"):
+            hx = hand_data.get("cursor_x", 0.5)
+            hy = hand_data.get("cursor_y", 0.5)
+            h_conf = hand_data.get("confidence", 0.95)
+            self.current_state["hand"] = hand_data
+            self.router.route_gaze_movement(hx, hy, h_conf)
+
+            if hand_data.get("gesture") == "PINCH_CLICK":
+                self.router.route_gesture_action("PINCH_CLICK", 0.95)
+            return
+
         is_scrolling = False
 
         # 1. Head Pose & Scrolling

@@ -70,5 +70,17 @@ class TestGestureDetection(unittest.TestCase):
         self.assertEqual(res_release["gesture"], "LEFT_WINK")
         print("PASS: Deliberate left wink successfully recognized on release.")
 
+    def test_deliberate_blink_click(self):
+        """Deliberate bilateral eye closure (held for 6 frames) MUST trigger BLINK_CLICK on release."""
+        detector = GestureDetector()
+        # 6 consecutive frames of both eyes closed (~200ms)
+        for f in range(6):
+            detector.detect_gestures(self.closed_eye, self.closed_eye, {}, timestamp_ms=2000 + f * 33)
+
+        # Release deliberate eye closure
+        res_release = detector.detect_gestures(self.open_eye, self.open_eye, {}, timestamp_ms=2250)
+        self.assertEqual(res_release["gesture"], "BLINK_CLICK")
+        print("PASS: Deliberate bilateral blink click successfully recognized on release.")
+
 if __name__ == "__main__":
     unittest.main()

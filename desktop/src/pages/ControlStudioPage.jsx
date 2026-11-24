@@ -15,7 +15,13 @@ import {
   MousePointer,
   Keyboard,
   Zap,
-  Gauge
+  Gauge,
+  Hand,
+  CheckCircle2,
+  Crosshair,
+  ArrowUpDown,
+  ArrowLeftRight,
+  HelpCircle
 } from 'lucide-react';
 import { useMotionEase } from '../context/MotionEaseContext';
 import WebcamPreview from '../components/WebcamPreview';
@@ -37,20 +43,29 @@ export const ControlStudioPage = () => {
     triggerEmergencyStop,
     resumeEmergencyStop,
     setCurrentPage,
-    calibrateNeutralHead
+    calibrateNeutralHead,
+    recenterGaze,
+    setTrackingMode
   } = useMotionEase();
 
   const [showOverlay, setShowOverlay] = useState(true);
+
+  // Determine active input source for friendly user feedback
+  const activeInputSource = telemetry.hand?.detected
+    ? '🖐️ Hand Tracking (Active Pointer)'
+    : telemetry.face_detected
+    ? '👤 Head & Gaze (Active Pointer)'
+    : '🔍 Searching for User Face / Hand';
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <PageHeader
         title="Live Control Studio"
-        subtitle="High-fidelity visual telemetry, real-time facial mesh overlay, and action stream."
+        subtitle="High-fidelity multimodal telemetry, real-time hand & face tracking overlay, and instant directional tuning."
         badge={
           <StatusBadge
-            status={telemetry.face_detected ? 'active' : 'warning'}
-            text={telemetry.face_detected ? 'Face Tracking Active' : 'Locating User'}
+            status={telemetry.hand?.detected || telemetry.face_detected ? 'active' : 'warning'}
+            text={activeInputSource}
           />
         }
         actionButton={
@@ -99,6 +114,46 @@ export const ControlStudioPage = () => {
         }
       />
 
+      {/* Mode Selector Strip */}
+      <div className="card-base p-3 bg-surface-primary border-border-color flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-txt-muted uppercase tracking-wider">
+            Tracking Mode:
+          </span>
+          <div className="flex items-center gap-1.5">
+            {[
+              { id: 'auto', label: '✨ Hybrid (Hand + Face)', desc: 'Auto-switches to hand when raised' },
+              { id: 'hand', label: '🖐️ Hand Only', desc: 'Control cursor exclusively by moving hand' },
+              { id: 'face', label: '👤 Head & Eyes Only', desc: 'Hands-free control via head movement & gaze' }
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setTrackingMode(m.id)}
+                title={m.desc}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  (settings.tracking_mode || 'auto') === m.id
+                    ? 'bg-accent-primary text-white shadow-glow'
+                    : 'bg-surface-secondary text-txt-muted hover:text-txt-primary border border-border-color'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Center Baseline Button */}
+        <button
+          onClick={recenterGaze}
+          className="btn-secondary h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 hover:border-cyan-400 text-cyan-300"
+          title="Recenter cursor and head baseline to wherever you are currently positioned"
+        >
+          <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Center Cursor Baseline</span>
+        </button>
+      </div>
+
       {/* Safety & User Control Banner */}
       <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-surface-primary to-surface-secondary border border-accent-primary/20 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-2.5">
@@ -144,7 +199,7 @@ export const ControlStudioPage = () => {
                 title="Pause tracking and save the current head position as neutral"
               >
                 <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Recenter Head</span>
+                <span>Recenter Head Baseline</span>
               </button>
 
               <button
@@ -152,7 +207,7 @@ export const ControlStudioPage = () => {
                 className="btn-secondary h-8 px-3 rounded-lg text-xs flex items-center gap-1.5 hover:border-accent-primary"
               >
                 <Eye className="w-3.5 h-3.5 text-accent-primary" />
-                <span>Recalibrate Gaze</span>
+                <span>9-Point Eye Calibration</span>
               </button>
             </div>
 
@@ -163,18 +218,64 @@ export const ControlStudioPage = () => {
             </div>
           </div>
 
+          {/* How To Use Quick Guide Card */}
+          <div className="card-base p-4 bg-surface-primary border border-border-color space-y-3">
+            <h4 className="text-xs uppercase font-bold text-txt-muted tracking-wider flex items-center gap-1.5">
+              <HelpCircle className="w-4 h-4 text-cyan-400" />
+              How Input Gestures Work
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-surface-secondary border border-border-color/60 space-y-1">
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                  🖐️ Hand Tracking
+                </span>
+                <p className="text-[11px] text-txt-muted leading-relaxed">
+                  Move your hand up, down, left, or right. The cursor follows your index fingertip.
+                </p>
+                <span className="inline-block text-[10px] text-emerald-300 font-mono bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                  Pinch thumb+index = Click
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface-secondary border border-border-color/60 space-y-1">
+                <span className="font-semibold text-cyan-400 flex items-center gap-1">
+                  👤 Head Movement
+                </span>
+                <p className="text-[11px] text-txt-muted leading-relaxed">
+                  Turn or tilt your head up, down, left, or right. The cursor smoothly follows head posture.
+                </p>
+                <span className="inline-block text-[10px] text-cyan-300 font-mono bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30">
+                  Tilt ~20° = Scroll
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-surface-secondary border border-border-color/60 space-y-1">
+                <span className="font-semibold text-amber-400 flex items-center gap-1">
+                  👁️ Eye Closures
+                </span>
+                <p className="text-[11px] text-txt-muted leading-relaxed">
+                  Close eyes for ~300ms and open to click! Left wink clicks, right wink opens menu.
+                </p>
+                <span className="inline-block text-[10px] text-amber-300 font-mono bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30">
+                  Smile = Double Click
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Head Pose Indicator Widget */}
           <HeadPoseIndicator head={telemetry.head} />
         </div>
 
-        {/* Right Column: Telemetry Breakdown & Action Stream (5 cols) */}
+        {/* Right Column: Directional Inversion, Jitter Tuning & Telemetry (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           {/* Real-time Cursor, Speed, Direction & Jitter Control Card */}
           <div className="bg-surface-primary border border-accent-primary/30 rounded-2xl p-4 space-y-3.5 shadow-lg">
             <div className="flex items-center justify-between">
               <h4 className="text-xs uppercase font-bold text-accent-secondary tracking-wider flex items-center gap-1.5">
                 <Gauge className="w-4 h-4 text-accent-secondary" />
-                Live Cursor & Jitter Controls
+                Direction, Speed & Jitter Controls
               </h4>
               <button
                 onClick={() => setCurrentPage('settings')}
@@ -200,16 +301,68 @@ export const ControlStudioPage = () => {
                 title="Click to flip horizontal cursor direction"
               >
                 <div className="flex items-center gap-2">
-                  <Compass className="w-4 h-4" />
+                  <ArrowLeftRight className="w-4 h-4" />
                   <span>
                     {settings.invert_x
-                      ? 'Looking Right → Moves Right (Inverted)'
-                      : 'Looking Right → Moves Left (Raw)'}
+                      ? 'Looking / Moving Right → Moves Right'
+                      : 'Looking / Moving Right → Moves Left'}
                   </span>
                 </div>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-surface-primary border border-border-color font-mono uppercase">
-                  Click to Flip
+                  Flip X
                 </span>
+              </button>
+            </div>
+
+            {/* Vertical Direction Invert Toggle */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-txt-muted block">
+                Vertical Direction (Up ↕ Down)
+              </label>
+              <button
+                type="button"
+                onClick={() => updateSettings({ invert_y: !settings.invert_y })}
+                className={`w-full p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all ${
+                  settings.invert_y
+                    ? 'border-amber-500/60 bg-amber-950/30 text-amber-300'
+                    : 'border-cyan-500/60 bg-cyan-950/30 text-cyan-300'
+                }`}
+                title="Click to flip vertical cursor direction"
+              >
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown className="w-4 h-4" />
+                  <span>
+                    {settings.invert_y
+                      ? 'Moving Up → Moves Down (Inverted)'
+                      : 'Moving Up → Moves Up (Natural)'}
+                  </span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-surface-primary border border-border-color font-mono uppercase">
+                  Flip Y
+                </span>
+              </button>
+            </div>
+
+            {/* Deliberate Blink to Click Toggle */}
+            <div className="p-2.5 rounded-xl bg-surface-secondary border border-border-color flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-txt-primary block">
+                  Blink / Close Eyes to Click
+                </span>
+                <span className="text-[10px] text-txt-muted">
+                  Hold eyes closed ~300ms & reopen to trigger Left Click
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateSettings({ blink_click: !(settings.blink_click !== false) })}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  settings.blink_click !== false
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-surface-primary text-txt-muted border border-border-color'
+                }`}
+              >
+                {settings.blink_click !== false ? 'ON' : 'OFF'}
               </button>
             </div>
 
@@ -244,12 +397,12 @@ export const ControlStudioPage = () => {
             {/* Jitter Fixation Deadband */}
             <div className="space-y-1.5 pt-1 border-t border-border-color/50">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-txt-muted font-medium">Jitter Suppression (Deadband):</span>
+                <span className="text-txt-muted font-medium">Jitter Fixation Lock:</span>
                 <span className="font-mono font-bold text-emerald-400">{settings.deadband_px} px</span>
               </div>
               <input
                 type="range"
-                min={3}
+                min={2}
                 max={20}
                 step={1}
                 value={settings.deadband_px}
@@ -257,38 +410,8 @@ export const ControlStudioPage = () => {
                 className="w-full accent-emerald-400 cursor-pointer h-1.5 rounded-lg bg-surface-secondary"
               />
               <div className="flex justify-between text-[10px] text-txt-muted font-mono">
-                <span>More Responsive (3px)</span>
-                <span>Zero Jitter / Rock Solid (20px)</span>
-              </div>
-            </div>
-
-            {/* Update Frequency Toggle */}
-            <div className="flex items-center justify-between pt-1 border-t border-border-color/50 text-xs">
-              <span className="text-txt-muted font-medium">Cursor Frequency:</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => updateSettings({ cursor_rate_hz: 30 })}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition-all ${
-                    settings.cursor_rate_hz === 30
-                      ? 'border-accent-primary bg-accent-primary/20 text-cyan-300 font-bold'
-                      : 'border-border-color bg-surface-secondary text-txt-muted'
-                  }`}
-                >
-                  30 Hz
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateSettings({ cursor_rate_hz: 60 })}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition-all flex items-center gap-1 ${
-                    settings.cursor_rate_hz === 60
-                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300 font-bold'
-                      : 'border-border-color bg-surface-secondary text-txt-muted'
-                  }`}
-                >
-                  <Zap className="w-3 h-3 text-emerald-400" />
-                  <span>60 Hz Ultra</span>
-                </button>
+                <span>Fastest Response (2px)</span>
+                <span>Zero Drift / Rock Solid (20px)</span>
               </div>
             </div>
           </div>
@@ -297,21 +420,21 @@ export const ControlStudioPage = () => {
           <div className="bg-surface-primary border border-border-color rounded-2xl p-4 space-y-3">
             <h4 className="text-xs uppercase font-bold text-txt-muted tracking-wider flex items-center gap-1.5">
               <Activity className="w-4 h-4 text-accent-primary" />
-              Tracking Telemetry Vectors
+              Live Telemetry & Gesture State
             </h4>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="p-2.5 rounded-xl bg-surface-secondary border border-border-color/50">
-                <span className="text-txt-muted block text-[11px]">Filtered Pointer (X, Y)</span>
-                <span className="font-mono font-bold text-txt-primary mt-1 block">
-                  {(telemetry.gaze.x * 100).toFixed(1)}%, {(telemetry.gaze.y * 100).toFixed(1)}%
+                <span className="text-txt-muted block text-[11px]">Active Input Source</span>
+                <span className="font-semibold text-emerald-400 mt-1 block truncate">
+                  {telemetry.hand?.detected ? '🖐️ Hand Detected' : telemetry.face_detected ? '👤 Face / Head' : 'Not Detected'}
                 </span>
               </div>
 
               <div className="p-2.5 rounded-xl bg-surface-secondary border border-border-color/50">
-                <span className="text-txt-muted block text-[11px]">Raw Iris Gaze (X, Y)</span>
-                <span className="font-mono text-cyan-400 mt-1 block">
-                  {(telemetry.gaze.raw_x * 100).toFixed(1)}%, {(telemetry.gaze.raw_y * 100).toFixed(1)}%
+                <span className="text-txt-muted block text-[11px]">Filtered Pointer</span>
+                <span className="font-mono font-bold text-txt-primary mt-1 block">
+                  {(telemetry.gaze.x * 100).toFixed(1)}%, {(telemetry.gaze.y * 100).toFixed(1)}%
                 </span>
               </div>
 
@@ -325,7 +448,7 @@ export const ControlStudioPage = () => {
               <div className="p-2.5 rounded-xl bg-surface-secondary border border-border-color/50">
                 <span className="text-txt-muted block text-[11px]">Detected Gesture</span>
                 <span className="font-semibold text-emerald-400 mt-1 block truncate">
-                  {telemetry.gesture.detected || 'None (Neutral)'}
+                  {telemetry.gesture.detected || telemetry.hand?.gesture || (telemetry.gesture.is_blink ? 'Closing Eyes...' : 'Neutral')}
                 </span>
               </div>
             </div>
@@ -334,25 +457,25 @@ export const ControlStudioPage = () => {
             <div className="pt-2 border-t border-border-color/50 space-y-1.5 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-txt-secondary flex items-center gap-1.5">
-                  <Eye className="w-3.5 h-3.5 text-accent-primary" /> Gaze Pointer Control
+                  <Hand className="w-3.5 h-3.5 text-emerald-400" /> Hand Gesture Tracking
                 </span>
-                <StatusBadge status={modalities.gaze ? 'active' : 'inactive'} size="sm" />
+                <StatusBadge status={telemetry.hand?.detected ? 'active' : 'inactive'} size="sm" />
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-txt-secondary flex items-center gap-1.5">
-                  <Compass className="w-3.5 h-3.5 text-accent-secondary" /> Head Tilt Viewport Scrolling
+                  <Eye className="w-3.5 h-3.5 text-accent-primary" /> Head & Gaze Pointer Control
                 </span>
-                <StatusBadge status={modalities.head ? 'active' : 'inactive'} size="sm" />
+                <StatusBadge status={telemetry.face_detected ? 'active' : 'inactive'} size="sm" />
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-txt-secondary flex items-center gap-1.5">
-                  <Smile className="w-3.5 h-3.5 text-emerald-400" /> Facial Gesture Actions
+                  <Smile className="w-3.5 h-3.5 text-cyan-400" /> Facial Gesture Actions
                 </span>
                 <StatusBadge status={modalities.gesture ? 'active' : 'inactive'} size="sm" />
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-txt-secondary flex items-center gap-1.5">
-                  <Mic className="w-3.5 h-3.5 text-cyan-400" /> Voice Commands & Launcher
+                  <Mic className="w-3.5 h-3.5 text-purple-400" /> Voice Commands & Launcher
                 </span>
                 <StatusBadge status={modalities.voice ? 'active' : 'inactive'} size="sm" />
               </div>
@@ -360,7 +483,7 @@ export const ControlStudioPage = () => {
           </div>
 
           {/* Real-Time Action Log */}
-          <ActionLog actions={actionLog} maxHeight="240px" />
+          <ActionLog actions={actionLog} maxHeight="220px" />
         </div>
       </div>
     </div>

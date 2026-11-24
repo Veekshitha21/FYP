@@ -52,12 +52,12 @@ SAMPLES_PER_CALIBRATION_POINT = 30
 INVERT_CURSOR_X = True          # Invert horizontal axis so looking right moves right
 INVERT_CURSOR_Y = False         # Normal vertical axis
 CURSOR_SENSITIVITY = 1.0        # Default speed multiplier (0.5x = slow, 1.0x = normal, 2.0x = fast)
-CURSOR_DEADBAND_PIXELS = 12     # Pixels of stationary deadband to eliminate micro-jitter (raised from 8)
+CURSOR_DEADBAND_PIXELS = 6      # Pixels of stationary deadband to eliminate micro-jitter
 CURSOR_UPDATE_RATE_HZ = 60      # Frequency of high-rate cursor interpolation (30 or 60 Hz)
 
 # Signal Filtering: One-Euro Filter Parameters
-ONE_EURO_MIN_CUTOFF = 0.15      # Lower = more smoothing when stationary (0.15 Hz suppresses breathing drift)
-ONE_EURO_BETA = 0.020           # Slightly higher so intentional fast movements still track well
+ONE_EURO_MIN_CUTOFF = 0.85      # Cutoff frequency (0.85 Hz provides smooth tracking without sluggish lag)
+ONE_EURO_BETA = 0.015           # Speed coefficient (adaptive responsiveness during fast movement)
 ONE_EURO_DCUTOFF = 1.0          # Derivative cutoff frequency
 
 # Kalman Filter Parameters

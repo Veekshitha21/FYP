@@ -1,8 +1,8 @@
 """
 MODULE F: Facial Gesture Detection
 File: vision/gesture_detector.py
-Detects deliberate facial gestures (left wink, right wink, smile, mouth open)
-using a dual approach: Eye Aspect Ratio (EAR) + MediaPipe facial blendshapes.
+Detects deliberate facial gestures (left wink, right wink, deliberate blink/eye closure,
+smile, mouth open) using a dual approach: Eye Aspect Ratio (EAR) + MediaPipe facial blendshapes.
 Enforces deliberate duration windows and cooldowns to strictly prevent involuntary
 blinks from triggering false clicks.
 """
@@ -33,6 +33,13 @@ class GestureDetector:
         self.wink_frames_min = config.WINK_CONSECUTIVE_FRAMES_MIN
         self.wink_frames_max = config.WINK_CONSECUTIVE_FRAMES_MAX
 
+        # Deliberate bilateral blink / eye closure click thresholds
+        # Involuntary blinks are 1-3 frames (~30-100ms) -> ignored
+        # Deliberate intentional eye closures are 4-18 frames (~130-600ms) -> triggers CLICK upon opening
+        # Resting eyes (>18 frames) -> ignored
+        self.blink_frames_min = 4
+        self.blink_frames_max = 18
+
         # Blendshape threshold fallback/fusion
         self.blendshape_blink_threshold = 0.55
         self.blendshape_smile_threshold = 0.45
@@ -40,6 +47,7 @@ class GestureDetector:
 
         # Gesture enabled toggles
         self.enabled_gestures = {
+            "BLINK_CLICK": True,
             "LEFT_WINK": True,
             "RIGHT_WINK": True,
             "SMILE": True,
@@ -67,6 +75,7 @@ class GestureDetector:
             'left_ear': float,
             'right_ear': float,
             'is_blink': bool,
+            'blink_progress': float,
             'blendshapes_summary': dict
         }
         """
@@ -90,30 +99,42 @@ class GestureDetector:
         detected_gesture = None
         confidence = 0.0
         is_normal_blink = False
+        in_cooldown = (now - self.last_gesture_time_ms) < self.gesture_cooldown_ms
 
-        # Involuntary blink detection: Both eyes closed
+        # Both eyes closed (Blink or Deliberate Eye Closure)
         if left_closed and right_closed:
             self.both_eyes_closed_frames += 1
             self.left_eye_closed_frames = 0
             self.right_eye_closed_frames = 0
             is_normal_blink = True
-            # Involuntary blinks explicitly produce NO click
+
+            # Progress toward deliberate click (normalized 0.0 to 1.0)
+            blink_progress = min(1.0, self.both_eyes_closed_frames / float(self.blink_frames_min))
+
             return {
                 "gesture": None,
                 "confidence": 0.0,
                 "left_ear": round(left_ear, 3),
                 "right_ear": round(right_ear, 3),
                 "is_blink": True,
+                "both_eyes_closed_frames": self.both_eyes_closed_frames,
+                "blink_progress": round(blink_progress, 2),
                 "blendshapes_summary": {
                     "smile": round((bs_smile_left + bs_smile_right) / 2.0, 2),
                     "jaw_open": round(bs_jaw_open, 2)
                 }
             }
-        else:
+        elif not (left_closed and right_closed) and self.both_eyes_closed_frames > 0:
+            # Eyes just reopened! Check if closure duration was deliberate (4 to 18 frames)
+            closure_frames = self.both_eyes_closed_frames
             self.both_eyes_closed_frames = 0
 
-        # Check cooldown
-        in_cooldown = (now - self.last_gesture_time_ms) < self.gesture_cooldown_ms
+            if (self.blink_frames_min <= closure_frames <= self.blink_frames_max) and not in_cooldown:
+                if self.enabled_gestures.get("BLINK_CLICK", True):
+                    detected_gesture = "BLINK_CLICK"
+                    confidence = 0.95
+                    self.last_gesture_time_ms = now
+                    logger.info(f"Deliberate Blink / Eye Closure Click triggered ({closure_frames} frames).")
 
         # Left Eye Closed ONLY (Left Wink) -> Left Click
         if left_closed and not right_closed:
@@ -176,8 +197,9 @@ class GestureDetector:
             "left_ear": round(left_ear, 3),
             "right_ear": round(right_ear, 3),
             "is_blink": is_normal_blink,
+            "blink_progress": 0.0,
             "blendshapes_summary": {
-                "smile": round(avg_smile, 2),
+                "smile": round((bs_smile_left + bs_smile_right) / 2.0, 2),
                 "jaw_open": round(bs_jaw_open, 2)
             }
         }

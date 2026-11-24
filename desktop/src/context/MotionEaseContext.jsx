@@ -18,11 +18,13 @@ export const MotionEaseProvider = ({ children }) => {
       cursor_speed: 1.0,
       deadband_px: 8,
       cursor_rate_hz: 60,
-      min_cutoff: 0.25,
-      beta: 0.012,
+      min_cutoff: 0.85,
+      beta: 0.015,
       min_dwell_ms: 600,
       max_dwell_ms: 1500,
-      dwell_radius_px: 35
+      dwell_radius_px: 35,
+      tracking_mode: 'auto',
+      blink_click: true
     };
     try {
       const saved = localStorage.getItem('motionease_settings');
@@ -40,9 +42,11 @@ export const MotionEaseProvider = ({ children }) => {
     face_detected: false,
     bbox: null,
     landmarks: [],
+    tracking_mode: 'auto',
+    hand: { detected: false, x: 0.5, y: 0.5, gesture: null, pinch_dist: 0.0, landmarks: [] },
     gaze: { x: 0.5, y: 0.5, raw_x: 0.5, raw_y: 0.5, confidence: 0.0, mode: 'idle', is_calibrated: false },
     head: { pitch: 0.0, yaw: 0.0, roll: 0.0, direction: 'neutral', scroll_action: null },
-    gesture: { detected: null, confidence: 0.0, left_ear: 0.3, right_ear: 0.3, is_blink: false, blendshapes: {} },
+    gesture: { detected: null, confidence: 0.0, left_ear: 0.3, right_ear: 0.3, is_blink: false, blink_progress: 0.0, blendshapes: {} },
     dwell: { progress: 0.0, is_dwelling: false },
     audio_level: 0.0
   });
@@ -127,6 +131,8 @@ export const MotionEaseProvider = ({ children }) => {
         cursor_speed: updated.cursor_speed,
         deadband_px: updated.deadband_px,
         cursor_rate_hz: updated.cursor_rate_hz,
+        tracking_mode: updated.tracking_mode,
+        blink_click: updated.blink_click,
         one_euro: { min_cutoff: updated.min_cutoff, beta: updated.beta },
         dwell: {
           min_dwell_ms: updated.min_dwell_ms,
@@ -443,6 +449,17 @@ export const MotionEaseProvider = ({ children }) => {
     wsService.sendCommand('KEYBOARD_CLEAR');
   };
 
+  const recenterGaze = useCallback(() => {
+    wsService.sendCommand('RECENTER_GAZE');
+    addToast('Pointer baseline centered to your current position', 'success');
+  }, [addToast]);
+
+  const setTrackingMode = useCallback((mode) => {
+    updateSettings({ tracking_mode: mode });
+    wsService.sendCommand('SET_TRACKING_MODE', { mode });
+    addToast(`Control mode switched to ${mode.toUpperCase()}`, 'info');
+  }, [updateSettings, addToast]);
+
   const testVoiceCommand = (text) => {
     wsService.sendCommand('TEST_VOICE_COMMAND', { text });
   };
@@ -475,6 +492,8 @@ export const MotionEaseProvider = ({ children }) => {
         completeCalibration,
         resetCalibration,
         calibrateNeutralHead,
+        recenterGaze,
+        setTrackingMode,
         virtualKeyboardPress,
         virtualKeyboardSuggestion,
         virtualKeyboardClear,

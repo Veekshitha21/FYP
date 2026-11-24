@@ -41,6 +41,7 @@ from vision.face_detector import FaceLandmarkDetector, LEFT_IRIS_CENTER, RIGHT_I
 from vision.gaze_tracker import GazeTracker
 from vision.head_pose import HeadPoseEstimator
 from vision.gesture_detector import GestureDetector
+from vision.hand_detector import HandDetector
 
 # Signal processing
 from signal_processing.one_euro_filter import OneEuroFilter2D
@@ -84,6 +85,8 @@ class MotionEaseEngine:
         self.gaze_tracker = GazeTracker()
         self.head_pose = HeadPoseEstimator()
         self.gesture_detector = GestureDetector()
+        self.hand_detector = HandDetector()
+        self.tracking_mode = "auto"  # "auto" | "face" | "hand"
 
         # Initialize Signal Filters
         self.one_euro = OneEuroFilter2D(
@@ -234,6 +237,11 @@ class MotionEaseEngine:
             # 2. Facial Landmark & Iris Detection
             detection = self.face_detector.detect(processed_frame, timestamp_ms)
 
+            # 3. Hand Gesture & Pointer Detection
+            hand_data = None
+            if self.tracking_mode in ("auto", "hand") and self.hand_detector.is_initialized:
+                hand_data = self.hand_detector.detect(processed_frame, timestamp_ms)
+
             gaze_data = None
             head_data = None
             gesture_data = None
@@ -312,9 +320,9 @@ class MotionEaseEngine:
                     for i in key_indices if i < len(landmarks_norm)
                 ]
 
-                # G. Parallel Multimodal Feature Fusion
-                if self.is_tracking:
-                    self.fusion.process_vision_frame(gaze_data, head_data, gesture_data, dwell_data)
+            # G. Parallel Multimodal Feature Fusion (Processes Hand, Face, Gaze, Gestures)
+            if self.is_tracking:
+                self.fusion.process_vision_frame(gaze_data, head_data, gesture_data, dwell_data, hand_data=hand_data)
 
             # Compute loop latency
             loop_duration_ms = (time.perf_counter() - loop_start) * 1000.0
@@ -329,7 +337,7 @@ class MotionEaseEngine:
                 fps_timer = now
 
             # Broadcast Real-Time Telemetry to Frontend
-            self._broadcast_telemetry(detection, gaze_data, head_data, gesture_data, dwell_data, ui_landmarks)
+            self._broadcast_telemetry(detection, gaze_data, head_data, gesture_data, dwell_data, ui_landmarks, hand_data=hand_data)
 
             # System Metrics Broadcast every 1s
             if now - self.last_metrics_broadcast >= config.METRICS_REPORT_INTERVAL_SEC:
@@ -342,7 +350,7 @@ class MotionEaseEngine:
             sleep_time = max(0.001, target_period - loop_duration)
             time.sleep(sleep_time)
 
-    def _broadcast_telemetry(self, detection, gaze_data, head_data, gesture_data, dwell_data, ui_landmarks):
+    def _broadcast_telemetry(self, detection, gaze_data, head_data, gesture_data, dwell_data, ui_landmarks, hand_data=None):
         """Constructs and broadcasts structured telemetry JSON to React dashboard."""
         preview_b64 = None
         if hasattr(self, "_last_frame_bgr") and self._last_frame_bgr is not None and (self.frame_count % 2 == 0):
@@ -363,6 +371,15 @@ class MotionEaseEngine:
             "face_detected": detection.get("face_detected", False),
             "bbox": detection.get("bbox") if detection.get("face_detected") else None,
             "landmarks": ui_landmarks,
+            "tracking_mode": self.tracking_mode,
+            "hand": {
+                "detected": hand_data.get("hand_detected", False) if hand_data else False,
+                "x": hand_data.get("cursor_x", 0.5) if hand_data else 0.5,
+                "y": hand_data.get("cursor_y", 0.5) if hand_data else 0.5,
+                "gesture": hand_data.get("gesture") if hand_data else None,
+                "pinch_dist": hand_data.get("pinch_dist", 0.0) if hand_data else 0.0,
+                "landmarks": hand_data.get("landmarks", []) if hand_data else []
+            },
             "gaze": {
                 "x": gaze_data["screen_x"] if gaze_data else 0.5,
                 "y": gaze_data["screen_y"] if gaze_data else 0.5,
@@ -430,7 +447,9 @@ class MotionEaseEngine:
                 "deadband_px": self.dispatcher.mouse.deadband_px,
                 "cursor_rate_hz": self.target_fps,
                 "min_cutoff": self.one_euro.filter_x.min_cutoff,
-                "beta": self.one_euro.filter_x.beta
+                "beta": self.one_euro.filter_x.beta,
+                "tracking_mode": self.tracking_mode,
+                "blink_click": self.gesture_detector.enabled_gestures.get("BLINK_CLICK", True)
             }
         }
         self.ws_server.broadcast(msg)
@@ -573,6 +592,31 @@ class MotionEaseEngine:
             text = data.get("text", "")
             self.speech_recognizer.feed_simulated_or_direct_transcript(text)
 
+        elif cmd == "SET_TRACKING_MODE":
+            mode = data.get("mode", "auto")
+            self.tracking_mode = mode
+            self.fusion.hand_enabled = (mode in ("auto", "hand"))
+            self.fusion.gaze_enabled = (mode in ("auto", "face"))
+            logger.info(f"Tracking mode set to '{mode}' (hand={self.fusion.hand_enabled}, gaze={self.fusion.gaze_enabled})")
+            self._broadcast_system_metrics()
+
+        elif cmd == "RECENTER_GAZE":
+            self.gaze_tracker.calibrate_center()
+            self.head_pose.reset_neutral()
+            self.one_euro.reset()
+            logger.info("Cursor and head baseline recentered.")
+            self.ws_server.broadcast({
+                "type": "recenter_event",
+                "message": "Pointer and head baseline centered successfully"
+            })
+            self._broadcast_system_metrics()
+
+        elif cmd == "TOGGLE_BLINK_CLICK":
+            enabled = bool(data.get("enabled", True))
+            self.gesture_detector.set_gesture_enabled("BLINK_CLICK", enabled)
+            logger.info(f"Deliberate blink click enabled: {enabled}")
+            self._broadcast_system_metrics()
+
         elif cmd == "UPDATE_SETTINGS":
             # Real-time manual adjustments from UI
             if "invert_x" in data:
@@ -586,6 +630,13 @@ class MotionEaseEngine:
             if "cursor_rate_hz" in data:
                 self.target_fps = max(15, min(120, int(data["cursor_rate_hz"])))
                 logger.info(f"Target cursor update frequency set to {self.target_fps} Hz")
+            if "tracking_mode" in data:
+                mode = data["tracking_mode"]
+                self.tracking_mode = mode
+                self.fusion.hand_enabled = (mode in ("auto", "hand"))
+                self.fusion.gaze_enabled = (mode in ("auto", "face"))
+            if "blink_click" in data:
+                self.gesture_detector.set_gesture_enabled("BLINK_CLICK", bool(data["blink_click"]))
 
             # Update One-Euro, Dwell, or Gesture settings dynamically
             one_euro_cfg = data.get("one_euro")

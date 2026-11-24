@@ -12,7 +12,11 @@ import {
   Pause,
   Sliders,
   Keyboard,
-  ArrowUpRight
+  ArrowUpRight,
+  Hand,
+  Crosshair,
+  ArrowLeftRight,
+  ArrowUpDown
 } from 'lucide-react';
 import { useMotionEase } from '../context/MotionEaseContext';
 import StatusCard from '../components/StatusCard';
@@ -25,10 +29,14 @@ export const DashboardPage = () => {
     telemetry,
     systemStatus,
     modalities,
+    settings,
+    updateSettings,
     toggleModality,
     startTracking,
     pauseTracking,
     stopTracking,
+    recenterGaze,
+    setTrackingMode,
     setCurrentPage
   } = useMotionEase();
 
@@ -82,6 +90,61 @@ export const DashboardPage = () => {
           >
             <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
             <span>Virtual Keyboard</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Mode & Direction Tuning Strip */}
+      <div className="card-base p-3.5 bg-surface-primary border-border-color flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-txt-muted uppercase tracking-wider text-[11px]">
+            Input Mode:
+          </span>
+          <div className="flex items-center gap-1.5">
+            {[
+              { id: 'auto', label: '✨ Hybrid (Hand + Face)' },
+              { id: 'hand', label: '🖐️ Hand Only' },
+              { id: 'face', label: '👤 Head & Eyes Only' }
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setTrackingMode(m.id)}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-all ${
+                  (settings?.tracking_mode || 'auto') === m.id
+                    ? 'bg-accent-primary text-white shadow-glow'
+                    : 'bg-surface-secondary text-txt-muted hover:text-txt-primary border border-border-color'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => updateSettings({ invert_x: !settings?.invert_x })}
+            className={`px-2.5 py-1.5 rounded-lg border font-semibold flex items-center gap-1 transition-all ${
+              settings?.invert_x
+                ? 'border-cyan-500/60 bg-cyan-950/30 text-cyan-300'
+                : 'border-amber-500/60 bg-amber-950/30 text-amber-300'
+            }`}
+            title="Click to flip horizontal cursor direction"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+            <span>{settings?.invert_x ? 'Right ⇄ Right' : 'Right ⇄ Left (Flip)'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={recenterGaze}
+            className="px-2.5 py-1.5 rounded-lg bg-surface-secondary border border-border-color text-cyan-300 hover:border-cyan-400 font-semibold flex items-center gap-1"
+            title="Recenter cursor and head baseline"
+          >
+            <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Center Pointer</span>
           </button>
         </div>
       </div>

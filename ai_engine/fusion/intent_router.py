@@ -60,7 +60,7 @@ class IntentRouter:
             logger.debug(f"Gesture {gesture} rejected: {reason}")
             return
 
-        if gesture == "LEFT_WINK":
+        if gesture in ("LEFT_WINK", "BLINK_CLICK", "PINCH_CLICK"):
             if self.resolver.resolve_click("LEFT_CLICK", source="gesture"):
                 self.dispatcher.dispatch("LEFT_CLICK")
 

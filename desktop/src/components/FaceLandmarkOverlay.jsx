@@ -6,6 +6,7 @@ export const FaceLandmarkOverlay = ({
   gaze = null,
   head = null,
   dwell = null,
+  hand = null,
   showWireframe = true,
   showIris = true,
   showHeadPose = true,
@@ -129,7 +130,37 @@ export const FaceLandmarkOverlay = ({
       ctx.arc(targetX, targetY, 4, 0, 2 * Math.PI);
       ctx.fill();
     }
-  }, [landmarks, bbox, gaze, head, dwell, showWireframe, showIris, showHeadPose, showDwell, width, height]);
+
+    // 5. Draw Hand Landmarks & Pointer (if hand detected)
+    if (hand && hand.detected) {
+      if (hand.landmarks && hand.landmarks.length > 0) {
+        ctx.fillStyle = '#10B981'; // Emerald dots for hand landmarks
+        for (let i = 0; i < hand.landmarks.length; i++) {
+          const pt = hand.landmarks[i];
+          const x = pt.x * width;
+          const y = pt.y * height;
+          ctx.beginPath();
+          ctx.arc(x, y, i === 8 ? 4 : 2, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+
+      // Draw hand pointer at cursor position
+      if (hand.x !== undefined && hand.y !== undefined) {
+        const hx = hand.x * width;
+        const hy = hand.y * height;
+
+        ctx.strokeStyle = hand.gesture === 'PINCH_CLICK' ? '#EF4444' : '#10B981';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(hx, hy, hand.gesture === 'PINCH_CLICK' ? 14 : 10, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        ctx.fillStyle = hand.gesture === 'PINCH_CLICK' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.2)';
+        ctx.fill();
+      }
+    }
+  }, [landmarks, bbox, gaze, head, dwell, hand, showWireframe, showIris, showHeadPose, showDwell, width, height]);
 
   return (
     <canvas
